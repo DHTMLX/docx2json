@@ -1,0 +1,44 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Docx to JSON</title>
+    <style>
+        #text1 {
+            width:80%; height: 300px; display: block; margin:10px;
+        }
+    </style>
+</head>
+<input>
+    <h3>Select an Docx file for conversion</h3>
+    <input type="file" id="convert-button">
+    <input type="button" id="copy-button" value="Copy result">
+    <textarea id="text1"></textarea>
+
+    <script type="module">
+    let $ = document.querySelector.bind(document);
+    
+    const buff = {};
+
+    $("#convert-button").addEventListener("change", function(e){
+        import("./js/module").then(({ convert }) => {
+            convert(this.files[0]).then((chunks) => {
+                buff.chunks = chunks;
+                $("#text1").value = JSON.stringify(chunks, null, 2);
+            });
+        });
+    });
+    $("#copy-button").addEventListener("click", function(e){
+        const t = {
+            chunks: buff.chunks,
+        };
+        const j = JSON.stringify(t, null, 2);
+        navigator.clipboard.writeText(j);
+    });
+    $("#text1").addEventListener("change", function(e) {
+        buff.chunks = JSON.parse($("#text1").value);
+    });
+    </script>
+</body>
+</html>
