@@ -349,6 +349,9 @@ impl DocxDocument {
         if let Some(color) = &props.color {
             new_props.color = Some(color.val.to_owned());
         }
+        if let Some(background) = &props.highlight {
+            new_props.background = Some(background.val.to_owned());
+        }
         if let Some(fonts) = &props.fonts {
             if let Some(v) = &fonts.ascii {
                 new_props.font_family = Some(v.to_owned());
@@ -697,6 +700,7 @@ mod tests {
                 Properties {
                     bold: Some(true),
                     underline: Some(true),
+                    background: Some("#123".to_owned()),
                     ..Default::default()
                 },
             ),
@@ -707,7 +711,12 @@ mod tests {
         let docx = Docx::new().add_paragraph(
             Paragraph::new()
                 .add_run(Run::new().add_text("Hello Word!").italic())
-                .add_run(Run::new().add_text("Hello Rust!").underline("single"))
+                .add_run(
+                    Run::new()
+                        .add_text("Hello Rust!")
+                        .underline("single")
+                        .highlight("#123"),
+                )
                 .bold()
                 .align(AlignmentType::Center),
         );
