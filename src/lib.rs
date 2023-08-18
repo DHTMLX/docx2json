@@ -7,8 +7,8 @@ use wasm_bindgen::prelude::*;
 
 use base64::{engine::general_purpose, Engine};
 use docx_rs::{
-    DocumentChild, DrawingData, HyperlinkData, Paragraph, ParagraphChild, ParagraphProperty,
-    RunChild, RunProperty,
+    BreakType, DocumentChild, DrawingData, HyperlinkData, Paragraph, ParagraphChild,
+    ParagraphProperty, RunChild, RunProperty,
 };
 
 use error::DocError;
@@ -70,7 +70,6 @@ impl DocxDocument {
 
     pub fn get_chunks(self) -> JsValue {
         utils::set_panic_hook();
-        
         JsValue::from_serde(&self.chunks).unwrap()
     }
 
@@ -181,6 +180,16 @@ impl DocxDocument {
                                 text.set_text(t.text.clone());
 
                                 self.append_chunk(text);
+                            }
+                            RunChild::Tab(t) => {
+                                // TODO parse tab
+                            }
+                            RunChild::Break(b) => {
+                                // TODO parse break
+                                if b.break_type == BreakType::TextWrapping {
+                                    let br = Chunk::new(self.id(), ChunkType::Break);
+                                    self.append_chunk(br);
+                                }
                             }
                             _ => (),
                         }
@@ -331,7 +340,7 @@ impl DocxDocument {
         }
         if let Some(indent) = &props.indent {
             if let Some(start_emu) = indent.start {
-                let px = utils::emu_to_px(start_emu);
+                let px = utils::indent_to_px(start_emu);
                 new_props.indent = Some(format!("{}px", px));
             }
         }
@@ -458,9 +467,9 @@ impl DocxDocument {
 #[cfg(test)]
 mod tests {
     use docx_rs::{
-        AbstractNumbering, AlignmentType, Docx, Hyperlink, HyperlinkType, IndentLevel, Level,
-        LevelJc, LevelText, NumberFormat, Numbering, NumberingId, Paragraph, Run, RunFonts, Start,
-        Style, StyleType,
+        AbstractNumbering, AlignmentType, BreakType, Docx, Hyperlink, HyperlinkType, IndentLevel,
+        Level, LevelJc, LevelText, NumberFormat, Numbering, NumberingId, Paragraph, Run, RunFonts,
+        Start, Style, StyleType,
     };
 
     use crate::{
@@ -517,6 +526,11 @@ mod tests {
             ch.props = props;
             ch
         }
+        fn br(&mut self) -> Chunk {
+            let mut ch = Chunk::new(self.id(), ChunkType::Break);
+            ch.props = Properties::default();
+            ch
+        }
     }
 
     fn to_json_from_docx(docx: docx_rs::Docx) -> String {
@@ -534,6 +548,21 @@ mod tests {
     fn px_to_emu(px: i32) -> i32 {
         let dpi = 96;
         px * (914400 / dpi)
+    }
+    fn px_to_indent(px: i32) -> i32 {
+        px * 15
+    }
+    use std::{fs::File, io::Read};
+
+    #[test]
+    fn test_read() {
+        let path = "./temp/test_indent.docx".to_owned();
+        let mut f = File::open(path).unwrap();
+        let mut buf = Vec::<u8>::new();
+        f.read_to_end(&mut buf).unwrap();
+
+        let mut d = DocxDocument::new(buf);
+        d.build().unwrap();
     }
 
     #[test]
@@ -564,7 +593,7 @@ mod tests {
             .add_paragraph(
                 Paragraph::new()
                     .add_run(Run::new().add_text("Hello World!"))
-                    .indent(Some(px_to_emu(60)), None, None, None)
+                    .indent(Some(px_to_indent(60)), None, None, None)
                     .bold(),
             )
             .add_paragraph(
@@ -801,6 +830,32 @@ mod tests {
             )
             .add_style(st_base)
             .add_style(st);
+
+        let actual_json = to_json_from_docx(docx);
+
+        assert_eq!(expected_json, actual_json);
+    }
+
+    #[test]
+    fn test_break() {
+        let mut t = T::new();
+        let expected_chunks = vec![
+            t.para(Properties::default()),
+            t.text("Hello", Properties::default()),
+            t.br(),
+            t.text("Rust!", Properties::default()),
+            t.end(),
+        ];
+        let expected_json = serde_json::to_string(&expected_chunks).unwrap();
+
+        let docx = Docx::new().add_paragraph(
+            Paragraph::new().add_run(
+                Run::new()
+                    .add_text("Hello")
+                    .add_break(BreakType::TextWrapping)
+                    .add_text("Rust!"),
+            ),
+        );
 
         let actual_json = to_json_from_docx(docx);
 

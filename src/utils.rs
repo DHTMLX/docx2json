@@ -8,6 +8,10 @@ pub fn docx_pt_to_px(v: i32) -> i32 {
     pt_to_px(pt)
 }
 
+pub fn indent_to_px(v: i32) -> i32 {
+    v / 15
+}
+
 fn pt_to_px(pt: i32) -> i32 {
     (pt as f32 / 0.75) as i32
 }

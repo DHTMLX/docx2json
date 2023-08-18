@@ -10,6 +10,7 @@ pub enum ChunkType {
     Ol = 9 | 0x2000 | 0x4000,
     Li = 10 | 0x2000 | 0x4000,
     End = 0x1fff,
+    Break = 11 | 0x4000,
 }
 
 #[derive(Serialize, Clone)]
@@ -140,6 +141,7 @@ impl Serialize for ChunkType {
             ChunkType::Ol => serializer.serialize_i32(9 | 0x2000 | 0x4000),
             ChunkType::Li => serializer.serialize_i32(10 | 0x2000 | 0x4000),
             ChunkType::End => serializer.serialize_i32(0x1fff),
+            ChunkType::Break => serializer.serialize_i32(11 | 0x4000),
         }
     }
 }
