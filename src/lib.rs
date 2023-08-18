@@ -1,5 +1,6 @@
 mod error;
 mod types;
+mod utils;
 
 use wasm_bindgen;
 use wasm_bindgen::prelude::*;
@@ -58,6 +59,8 @@ use gloo_utils::format::JsValueSerdeExt;
 #[wasm_bindgen]
 impl DocxDocument {
     pub fn new(bytes: Vec<u8>) -> DocxDocument {
+        utils::set_panic_hook();
+
         let docx = docx_rs::read_docx(&bytes).unwrap();
         let mut doc = DocxDocument::from_docx(docx);
         doc.build().unwrap();
@@ -66,6 +69,8 @@ impl DocxDocument {
     }
 
     pub fn get_chunks(self) -> JsValue {
+        utils::set_panic_hook();
+        
         JsValue::from_serde(&self.chunks).unwrap()
     }
 
@@ -155,8 +160,12 @@ impl DocxDocument {
                                                 .find_image_source(&pic.id)
                                                 .unwrap_or(String::default());
 
+                                            let w = utils::emu_to_px(pic.size.0 as i32) as usize;
+                                            let h = utils::emu_to_px(pic.size.1 as i32) as usize;
+
                                             let mut image = Chunk::new(self.id(), ChunkType::Image);
                                             image.set_url(url);
+                                            image.set_size(w, h);
 
                                             self.append_chunk(image);
                                         }
@@ -320,8 +329,11 @@ impl DocxDocument {
         if let Some(j) = &props.alignment {
             new_props.align = Some(j.val.to_owned());
         }
-        if let Some(_) = &props.indent {
-            // TODO parse indent
+        if let Some(indent) = &props.indent {
+            if let Some(start_emu) = indent.start {
+                let px = utils::emu_to_px(start_emu);
+                new_props.indent = Some(format!("{}px", px));
+            }
         }
         if let Some(_) = &props.line_spacing {
             // TODO parse line height
@@ -342,16 +354,16 @@ impl DocxDocument {
             new_props.underline = Some(!underline.val.is_empty());
         }
         if let Some(sz) = &props.sz {
-            // FIXME parse twips/pt to px
-            let size = sz.val;
-            new_props.font_size = Some(format!("{}px", size.to_string()));
+            let sz_px = utils::docx_pt_to_px(sz.val as i32);
+            new_props.font_size = Some(format!("{}px", sz_px.to_string()));
         }
         if let Some(color) = &props.color {
             new_props.color = Some(color.val.to_owned());
         }
-        if let Some(background) = &props.highlight {
-            new_props.background = Some(background.val.to_owned());
-        }
+        // if let Some(background) = &props.shading {
+        //     // FIXME Not supported by the docx-rs library. Need to add this ability manually
+
+        // }
         if let Some(fonts) = &props.fonts {
             if let Some(v) = &fonts.ascii {
                 new_props.font_family = Some(v.to_owned());
@@ -512,12 +524,26 @@ mod tests {
         d.build().unwrap();
         serde_json::to_string(&d.chunks).unwrap()
     }
+    fn px_to_docx_points(px: i32) -> i32 {
+        let pt = px_to_pt(px);
+        pt * 2
+    }
+    fn px_to_pt(px: i32) -> i32 {
+        (px as f32 * 0.75) as i32
+    }
+    fn px_to_emu(px: i32) -> i32 {
+        let dpi = 96;
+        px * (914400 / dpi)
+    }
 
     #[test]
     fn test_from_docx() {
         let mut t = T::new();
         let expected_chunks = vec![
-            t.para(Properties::default()),
+            t.para(Properties {
+                indent: Some("60px".to_owned()),
+                ..Default::default()
+            }),
             t.text(
                 "Hello World!",
                 Properties {
@@ -538,6 +564,7 @@ mod tests {
             .add_paragraph(
                 Paragraph::new()
                     .add_run(Run::new().add_text("Hello World!"))
+                    .indent(Some(px_to_emu(60)), None, None, None)
                     .bold(),
             )
             .add_paragraph(
@@ -700,7 +727,6 @@ mod tests {
                 Properties {
                     bold: Some(true),
                     underline: Some(true),
-                    background: Some("#123".to_owned()),
                     ..Default::default()
                 },
             ),
@@ -711,12 +737,7 @@ mod tests {
         let docx = Docx::new().add_paragraph(
             Paragraph::new()
                 .add_run(Run::new().add_text("Hello Word!").italic())
-                .add_run(
-                    Run::new()
-                        .add_text("Hello Rust!")
-                        .underline("single")
-                        .highlight("#123"),
-                )
+                .add_run(Run::new().add_text("Hello Rust!").underline("single"))
                 .bold()
                 .align(AlignmentType::Center),
         );
@@ -759,7 +780,7 @@ mod tests {
         let st_base = Style::new("Test_base", StyleType::Paragraph)
             .align(AlignmentType::End)
             .color("#FFF")
-            .size(32);
+            .size(px_to_docx_points(32) as usize);
 
         let st = Style::new("Test", StyleType::Paragraph)
             .based_on("Test_base")
@@ -770,7 +791,12 @@ mod tests {
             .add_paragraph(
                 Paragraph::new()
                     .add_run(Run::new().add_text("Hello Word!"))
-                    .add_run(Run::new().add_text("Hello Rust!").bold().size(8))
+                    .add_run(
+                        Run::new()
+                            .add_text("Hello Rust!")
+                            .bold()
+                            .size(px_to_docx_points(8) as usize),
+                    )
                     .style("Test"),
             )
             .add_style(st_base)

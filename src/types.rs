@@ -46,6 +46,10 @@ pub struct Properties {
     pub indent: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub line_height: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height: Option<String>,
 }
 
 impl Chunk {
@@ -67,6 +71,13 @@ impl Chunk {
     pub fn set_url(&mut self, url: String) {
         if self.chunk_type == ChunkType::Image || self.chunk_type == ChunkType::Link {
             self.props.url = Some(url);
+        }
+    }
+
+    pub fn set_size(&mut self, w: usize, h: usize) {
+        if self.chunk_type == ChunkType::Image {
+            self.props.width = Some(format!("{}px", w.to_string()));
+            self.props.height = Some(format!("{}px", h.to_string()));
         }
     }
 
