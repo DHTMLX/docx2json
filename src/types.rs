@@ -23,6 +23,11 @@ pub struct Chunk {
     pub props: Properties,
 }
 
+#[derive(Debug, Clone)]
+pub struct Px {
+    pub val: i32,
+}
+
 #[derive(Serialize, Debug, Clone, Default)]
 pub struct Properties {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -32,7 +37,7 @@ pub struct Properties {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub background: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub font_size: Option<String>,
+    pub font_size: Option<Px>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub font_family: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -44,13 +49,13 @@ pub struct Properties {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub align: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub indent: Option<String>,
+    pub indent: Option<Px>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub line_height: Option<String>,
+    pub line_height: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub width: Option<String>,
+    pub width: Option<Px>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub height: Option<String>,
+    pub height: Option<Px>,
 }
 
 impl Chunk {
@@ -75,10 +80,10 @@ impl Chunk {
         }
     }
 
-    pub fn set_size(&mut self, w: usize, h: usize) {
+    pub fn set_size(&mut self, w: i32, h: i32) {
         if self.chunk_type == ChunkType::Image {
-            self.props.width = Some(format!("{}px", w.to_string()));
-            self.props.height = Some(format!("{}px", h.to_string()));
+            self.props.width = Some(Px::new(w));
+            self.props.height = Some(Px::new(h));
         }
     }
 
@@ -116,14 +121,16 @@ impl Properties {
         self.url == None
             && self.color == None
             && self.background == None
-            && self.font_size == None
+            && self.font_size.is_none()
             && self.font_family == None
             && self.bold == None
             && self.italic == None
             && self.underline == None
             && self.align == None
-            && self.indent == None
+            && self.indent.is_none()
             && self.line_height == None
+            && self.width.is_none()
+            && self.height.is_none()
     }
 }
 
@@ -143,5 +150,23 @@ impl Serialize for ChunkType {
             ChunkType::End => serializer.serialize_i32(0x1fff),
             ChunkType::Break => serializer.serialize_i32(11 | 0x4000),
         }
+    }
+}
+
+impl Px {
+    pub fn new(val: i32) -> Px {
+        Px { val: val }
+    }
+    pub fn get_str(&self) -> String {
+        format!("{}px", self.val)
+    }
+}
+
+impl Serialize for Px {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.get_str())
     }
 }

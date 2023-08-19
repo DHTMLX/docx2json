@@ -56,6 +56,8 @@ pub struct DocxDocument {
 
 use gloo_utils::format::JsValueSerdeExt;
 
+use crate::types::Px;
+
 #[wasm_bindgen]
 impl DocxDocument {
     pub fn new(bytes: Vec<u8>) -> DocxDocument {
@@ -159,8 +161,8 @@ impl DocxDocument {
                                                 .find_image_source(&pic.id)
                                                 .unwrap_or(String::default());
 
-                                            let w = utils::emu_to_px(pic.size.0 as i32) as usize;
-                                            let h = utils::emu_to_px(pic.size.1 as i32) as usize;
+                                            let w = utils::emu_to_px(pic.size.0 as i32);
+                                            let h = utils::emu_to_px(pic.size.1 as i32);
 
                                             let mut image = Chunk::new(self.id(), ChunkType::Image);
                                             image.set_url(url);
@@ -181,11 +183,10 @@ impl DocxDocument {
 
                                 self.append_chunk(text);
                             }
-                            RunChild::Tab(t) => {
+                            RunChild::Tab(_t) => {
                                 // TODO parse tab
                             }
                             RunChild::Break(b) => {
-                                // TODO parse break
                                 if b.break_type == BreakType::TextWrapping {
                                     let br = Chunk::new(self.id(), ChunkType::Break);
                                     self.append_chunk(br);
@@ -341,7 +342,7 @@ impl DocxDocument {
         if let Some(indent) = &props.indent {
             if let Some(start_emu) = indent.start {
                 let px = utils::indent_to_px(start_emu);
-                new_props.indent = Some(format!("{}px", px));
+                new_props.indent = Some(Px::new(px));
             }
         }
         if let Some(_) = &props.line_spacing {
@@ -364,14 +365,13 @@ impl DocxDocument {
         }
         if let Some(sz) = &props.sz {
             let sz_px = utils::docx_pt_to_px(sz.val as i32);
-            new_props.font_size = Some(format!("{}px", sz_px.to_string()));
+            new_props.font_size = Some(Px::new(sz_px));
         }
         if let Some(color) = &props.color {
             new_props.color = Some(color.val.to_owned());
         }
         // if let Some(background) = &props.shading {
         //     // FIXME Not supported by the docx-rs library. Need to add this ability manually
-
         // }
         if let Some(fonts) = &props.fonts {
             if let Some(v) = &fonts.ascii {
@@ -468,12 +468,12 @@ impl DocxDocument {
 mod tests {
     use docx_rs::{
         AbstractNumbering, AlignmentType, BreakType, Docx, Hyperlink, HyperlinkType, IndentLevel,
-        Level, LevelJc, LevelText, NumberFormat, Numbering, NumberingId, Paragraph, Run, RunFonts,
-        Start, Style, StyleType,
+        Level, LevelJc, LevelText, LineSpacing, NumberFormat, Numbering, NumberingId, Paragraph,
+        Run, RunFonts, Start, Style, StyleType,
     };
 
     use crate::{
-        types::{Chunk, ChunkType, Properties},
+        types::{Chunk, ChunkType, Properties, Px},
         DocxDocument,
     };
 
@@ -545,10 +545,6 @@ mod tests {
     fn px_to_pt(px: i32) -> i32 {
         (px as f32 * 0.75) as i32
     }
-    fn px_to_emu(px: i32) -> i32 {
-        let dpi = 96;
-        px * (914400 / dpi)
-    }
     fn px_to_indent(px: i32) -> i32 {
         px * 15
     }
@@ -570,7 +566,7 @@ mod tests {
         let mut t = T::new();
         let expected_chunks = vec![
             t.para(Properties {
-                indent: Some("60px".to_owned()),
+                indent: Some(Px::new(60)),
                 ..Default::default()
             }),
             t.text(
@@ -786,7 +782,7 @@ mod tests {
             t.text(
                 "Hello Word!",
                 Properties {
-                    font_size: Some("32px".to_owned()),
+                    font_size: Some(Px::new(32)),
                     font_family: Some("Times".to_owned()),
                     color: Some("#888".to_owned()),
                     ..Default::default()
@@ -795,7 +791,7 @@ mod tests {
             t.text(
                 "Hello Rust!",
                 Properties {
-                    font_size: Some("8px".to_owned()),
+                    font_size: Some(Px::new(8)),
                     font_family: Some("Times".to_owned()),
                     color: Some("#888".to_owned()),
                     bold: Some(true),
