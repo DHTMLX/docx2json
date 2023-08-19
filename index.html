@@ -18,26 +18,13 @@
 
     <script type="module">
     let $ = document.querySelector.bind(document);
-    
-    const buff = {};
 
     $("#convert-button").addEventListener("change", function(e){
         import("./js/module").then(({ convert }) => {
             convert(this.files[0]).then((chunks) => {
-                buff.chunks = chunks;
                 $("#text1").value = JSON.stringify(chunks, null, 2);
             });
         });
-    });
-    $("#copy-button").addEventListener("click", function(e){
-        const t = {
-            chunks: buff.chunks,
-        };
-        const j = JSON.stringify(t, null, 2);
-        navigator.clipboard.writeText(j);
-    });
-    $("#text1").addEventListener("change", function(e) {
-        buff.chunks = JSON.parse($("#text1").value);
     });
     </script>
 </body>

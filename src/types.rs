@@ -59,7 +59,7 @@ pub struct Properties {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub indent: Option<Px>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub line_height: Option<f32>,
+    pub line_height: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub width: Option<Px>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -202,7 +202,7 @@ impl Spacing {
     pub fn set_before(&mut self, px: usize) {
         self.before = px;
     }
-    pub fn calc_line_spacing(&self, sz_px: usize) -> Option<f32> {
+    pub fn calc_line_spacing(&self, sz_px: usize) -> Option<String> {
         if self.after == 0 && self.before == 0 {
             return None;
         }
@@ -215,6 +215,6 @@ impl Spacing {
 
         let line_height = self.after + self.before + sz;
 
-        Some(line_height as f32 / sz as f32)
+        Some((line_height as f32 / sz as f32).to_string())
     }
 }

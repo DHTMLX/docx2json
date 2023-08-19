@@ -3,7 +3,6 @@ import { DocxDocument } from "../pkg/docx2json.js";
 export function convertArray(data) {
   const docx = DocxDocument.new(data);
   const chunks = docx.get_chunks();
-  console.log(chunks);
   return chunks;
 }
 

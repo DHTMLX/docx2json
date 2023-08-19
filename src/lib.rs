@@ -159,6 +159,7 @@ impl DocxDocument {
                 ListRelation::SiblingList => {
                     if l == 0 {
                         // if nesting level is zero, then return root
+                        *from -= 1;
                         chunks.push(Chunk::new(self.id(), ChunkType::End));
                         return Ok(chunks);
                     }
@@ -340,6 +341,7 @@ impl DocxDocument {
             new_props.italic = Some(italic.val);
         }
         if let Some(underline) = &props.underline {
+            // FIXME check underline kind
             new_props.underline = Some(!underline.val.is_empty());
         }
         if let Some(sz) = &props.sz {
@@ -845,7 +847,7 @@ mod tests {
         let mut t = T::new();
         let expected_chunks = vec![
             t.para(Properties {
-                line_height: Some(3.0),
+                line_height: Some("3".to_owned()),
                 ..Default::default()
             }),
             t.text(
