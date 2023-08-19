@@ -1,4 +1,5 @@
 mod error;
+mod numbering;
 mod types;
 mod utils;
 
@@ -12,38 +13,9 @@ use docx_rs::{
 };
 
 use error::DocError;
+use numbering::{ListRelation, NumberingMeta, NumberingType};
 use serde::Serialize;
 use types::{Chunk, ChunkType, Properties};
-
-#[derive(Clone, PartialEq)]
-enum NumberingType {
-    Unordered,
-    Ordered,
-}
-
-#[derive(Clone)]
-struct NumberingMeta {
-    pub id: usize,
-    pub level: usize,
-    pub marker: NumberingType,
-}
-
-impl NumberingMeta {
-    fn new(id: usize, level: usize, marker: NumberingType) -> NumberingMeta {
-        NumberingMeta {
-            id: id,
-            level: level,
-            marker: marker,
-        }
-    }
-
-    fn to_chunk_type(&self) -> ChunkType {
-        match self.marker {
-            NumberingType::Ordered => ChunkType::Ol,
-            NumberingType::Unordered => ChunkType::Ul,
-        }
-    }
-}
 
 #[derive(Serialize)]
 #[wasm_bindgen]
@@ -83,50 +55,145 @@ impl DocxDocument {
         }
     }
 
-    fn id(&mut self) -> usize {
-        self.id_counter += 1;
-        self.id_counter
-    }
-
     fn build(&mut self) -> Result<(), DocError> {
         let mut i = 0;
 
         while i < self.docx.document.children.len() {
-            match self.docx.document.children[i].to_owned() {
-                DocumentChild::Paragraph(p) => {
-                    let (chunk_type, numbering_meta) = self.define_chunk_type(&p)?;
-
-                    match chunk_type {
-                        ChunkType::Paragraph => self.parse_para(&p, ChunkType::Paragraph)?,
-                        ChunkType::Li => {
-                            let meta = &numbering_meta.unwrap();
-                            let i_copy = i.to_owned();
-
-                            self.parse_numbering(0, &mut i, &meta, i_copy)?
-                        }
-                        _ => return Err(DocError::new("unknown chunk type")),
-                    };
-                }
-                _ => (),
-            }
+            self.parse_index(&mut i)?;
             i += 1;
         }
 
         Ok(())
     }
 
-    fn append_chunk(&mut self, ch: Chunk) {
-        self.chunks.push(ch);
+    fn parse_index(&mut self, i: &mut usize) -> Result<(), DocError> {
+        let chunks = match self.docx.document.children[*i].to_owned() {
+            DocumentChild::Paragraph(p) => {
+                let (chunk_type, numbering_meta) = self.define_chunk_type(&p)?;
+
+                match chunk_type {
+                    ChunkType::Paragraph => self.parse_paragraph(&p, ChunkType::Paragraph)?,
+                    ChunkType::Li => {
+                        self.parse_numbering_sequence(0, i, &numbering_meta.unwrap(), *i)?
+                    }
+                    _ => return Err(DocError::new("unknown chunk type")),
+                }
+            }
+            _ => return Ok(()),
+        };
+
+        self.chunks.extend(chunks);
+
+        Ok(())
+    }
+
+    fn parse_paragraph(&mut self, p: &Paragraph, t: ChunkType) -> Result<Vec<Chunk>, DocError> {
+        let mut style_props = Properties::new();
+        if let Some(v) = &p.property.style {
+            // load properties from the style
+            self.load_props_from_style(&v.val, &mut style_props);
+        }
+
+        // load properties from inline para style
+        let para_props = self.override_para_properties(&style_props, &p.property);
+        // load properties from inline run style
+        let base_run_props = self.override_run_properties(&style_props, &p.property.run_property);
+
+        let mut paragraph = Chunk::new(self.id(), t);
+        paragraph.set_props(para_props);
+
+        let children = self.parse_block_content(&base_run_props, p.children.iter())?;
+
+        let mut chunks: Vec<Chunk> = vec![];
+        chunks.push(paragraph);
+        chunks.extend(children);
+        chunks.push(Chunk::new(self.id(), ChunkType::End));
+
+        Ok(chunks)
+    }
+
+    fn parse_numbering_sequence(
+        &mut self,
+        l: usize,
+        from: &mut usize,
+        parent_meta: &NumberingMeta,
+        from_cp: usize,
+    ) -> Result<Vec<Chunk>, DocError> {
+        let mut chunks: Vec<Chunk> = vec![];
+
+        while *from < self.docx.document.children.len() {
+            let p = match self.docx.document.children[*from].to_owned() {
+                DocumentChild::Paragraph(p) => p,
+                _ => break,
+            };
+
+            let mut num_meta = parent_meta.to_owned();
+            let mut chunk_type = ChunkType::Li;
+
+            if *from > from_cp {
+                let (t, m) = self.define_chunk_type(&p)?;
+                if t != ChunkType::Li {
+                    // child is not a list
+                    *from -= 1;
+                    chunks.push(Chunk::new(self.id(), ChunkType::End));
+
+                    return Ok(chunks);
+                }
+                num_meta = m.unwrap();
+                chunk_type = t;
+            } else {
+                // push root list chunk (ol/ul)
+                chunks.push(Chunk::new(self.id(), parent_meta.to_chunk_type()));
+            }
+
+            match numbering::define_list_relation(&num_meta, &parent_meta) {
+                ListRelation::ListItem => {
+                    let list_chunks = self.parse_paragraph(&p, chunk_type)?;
+                    chunks.extend(list_chunks);
+
+                    *from += 1;
+                }
+                ListRelation::SiblingList => {
+                    if l == 0 {
+                        // if nesting level is zero, then return root
+                        chunks.push(Chunk::new(self.id(), ChunkType::End));
+                        return Ok(chunks);
+                    }
+
+                    let list_type = num_meta.to_owned().to_chunk_type();
+                    let sibling_list = Chunk::new(self.id(), list_type);
+                    let list_children =
+                        self.parse_numbering_sequence(l, from, &num_meta, from.clone())?;
+
+                    chunks.push(sibling_list);
+                    chunks.extend(list_children);
+                    chunks.push(Chunk::new(self.id(), ChunkType::End));
+                }
+                ListRelation::NestedList => {
+                    let list_children =
+                        self.parse_numbering_sequence(l + 1, from, &num_meta, from.clone())?;
+                    chunks.extend(list_children);
+                }
+                ListRelation::End => {
+                    chunks.push(Chunk::new(self.id(), ChunkType::End));
+                    return Ok(chunks);
+                }
+            }
+        }
+
+        return Ok(chunks);
     }
 
     fn parse_block_content<'a, T>(
         &mut self,
         base_props: &Properties,
         children_iter: T,
-    ) -> Result<(), DocError>
+    ) -> Result<Vec<Chunk>, DocError>
     where
         T: Iterator<Item = &'a ParagraphChild>,
     {
+        let mut chunks: Vec<Chunk> = vec![];
+
         for child in children_iter {
             match child {
                 ParagraphChild::Hyperlink(v) => match &v.link {
@@ -136,12 +203,11 @@ impl DocxDocument {
                         let mut hyperlink = Chunk::new(self.id(), ChunkType::Link);
                         hyperlink.set_url(url.unwrap_or(String::default()));
 
-                        self.append_chunk(hyperlink);
+                        let children = self.parse_block_content(base_props, v.children.iter())?;
 
-                        self.parse_block_content(base_props, v.children.iter())?;
-
-                        let end = Chunk::new(self.id(), ChunkType::End);
-                        self.append_chunk(end);
+                        chunks.push(hyperlink);
+                        chunks.extend(children);
+                        chunks.push(Chunk::new(self.id(), ChunkType::End));
                     }
                     _ => (),
                 },
@@ -168,7 +234,7 @@ impl DocxDocument {
                                             image.set_url(url);
                                             image.set_size(w, h);
 
-                                            self.append_chunk(image);
+                                            chunks.push(image);
                                         }
                                         _ => (),
                                     }
@@ -181,15 +247,14 @@ impl DocxDocument {
                                 text.set_props(run_props.to_owned());
                                 text.set_text(t.text.clone());
 
-                                self.append_chunk(text);
+                                chunks.push(text);
                             }
                             RunChild::Tab(_t) => {
                                 // TODO parse tab
                             }
                             RunChild::Break(b) => {
                                 if b.break_type == BreakType::TextWrapping {
-                                    let br = Chunk::new(self.id(), ChunkType::Break);
-                                    self.append_chunk(br);
+                                    chunks.push(Chunk::new(self.id(), ChunkType::Break));
                                 }
                             }
                             _ => (),
@@ -200,116 +265,18 @@ impl DocxDocument {
             }
         }
 
-        Ok(())
+        Ok(chunks)
     }
 
-    fn parse_para(&mut self, p: &Paragraph, t: ChunkType) -> Result<(), DocError> {
-        // get properties from the style
-        let mut style_props = Properties::new();
-        if let Some(v) = &p.property.style {
-            self.load_props_from_style(&v.val, &mut style_props);
-        }
-
-        // get properties from inline run style
-        let base_run_props = self.override_run_properties(&style_props, &p.property.run_property);
-        // get properties from inline para style
-        let para_props = self.override_para_properties(&style_props, &p.property);
-
-        // parse paragraph content
-
-        let mut paragraph = Chunk::new(self.id(), t);
-        paragraph.set_props(para_props);
-
-        self.append_chunk(paragraph);
-
-        self.parse_block_content(&base_run_props, p.children.iter())?;
-
-        let end = Chunk::new(self.id(), ChunkType::End);
-        self.append_chunk(end);
-
-        Ok(())
-    }
-
-    fn parse_numbering(
-        &mut self,
-        l: usize,
-        from: &mut usize,
-        parent_meta: &NumberingMeta,
-        from_cp: usize,
-    ) -> Result<(), DocError> {
-        while *from < self.docx.document.children.len() {
-            let p = match self.docx.document.children[*from].to_owned() {
-                DocumentChild::Paragraph(p) => p,
-                _ => break,
-            };
-
-            let mut num_meta = parent_meta.to_owned();
-            let mut chunk_type = ChunkType::Li;
-
-            if *from > from_cp {
-                let (t, m) = self.define_chunk_type(&p)?;
-                if t != ChunkType::Li {
-                    // child is not list
-                    *from -= 1;
-                    let end = Chunk::new(self.id(), ChunkType::End);
-                    self.append_chunk(end);
-
-                    return Ok(());
-                }
-                num_meta = m.unwrap();
-                chunk_type = t;
-            } else {
-                let list = Chunk::new(self.id(), parent_meta.to_chunk_type());
-                self.append_chunk(list);
-            }
-
-            if num_meta.id == parent_meta.id
-                && num_meta.level == parent_meta.level
-                && num_meta.marker == parent_meta.marker
-            {
-                //
-                // the same list
-                //
-                self.parse_para(&p, chunk_type)?;
-
-                *from += 1;
-            } else if num_meta.level > parent_meta.level {
-                //
-                // nested list
-                //
-
-                self.parse_numbering(l + 1, from, &num_meta, from.clone())?;
-            } else if num_meta.level == parent_meta.level {
-                //
-                // sibling list
-                //
-                if l == 0 {
-                    // if nesting level is zero, then return root list
-                    let end = Chunk::new(self.id(), ChunkType::End);
-                    self.append_chunk(end);
-                    return Ok(());
-                }
-                let list_type = num_meta.to_owned().to_chunk_type();
-                let sibling_root = Chunk::new(self.id(), list_type);
-
-                self.append_chunk(sibling_root);
-
-                self.parse_numbering(l, from, &num_meta, from.clone())?;
-                let end = Chunk::new(self.id(), ChunkType::End);
-                self.append_chunk(end);
-            } else {
-                //
-                // list of the level above
-                //
-                let end = Chunk::new(self.id(), ChunkType::End);
-                self.append_chunk(end);
-
-                return Ok(());
-            }
-        }
-
-        return Ok(());
-    }
+    // parse paragraph content
+    // TODO
+    // 1) parse block_content
+    // 2) find max font size
+    // 3) find all spacing and calculate line-height
+    // 4) calculate line-spacing
+    //
+    // * need to change returing value: do not mutate self.chunks directly, better to return an array of children
+    //
 
     fn load_props_from_style(&self, id: &String, dest: &mut Properties) {
         let st = self.docx.styles.find_style_by_id(&id).unwrap();
@@ -461,6 +428,11 @@ impl DocxDocument {
                 )))
             }
         }
+    }
+
+    fn id(&mut self) -> usize {
+        self.id_counter += 1;
+        self.id_counter
     }
 }
 

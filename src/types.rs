@@ -107,6 +107,10 @@ impl Chunk {
                 self.props.italic = props.italic;
                 self.props.underline = props.underline;
             }
+            ChunkType::Image => {
+                self.props.width = props.width;
+                self.props.height = props.height;
+            }
             _ => (),
         }
     }
