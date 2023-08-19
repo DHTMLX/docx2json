@@ -15,7 +15,7 @@ use docx_rs::{
 use error::DocError;
 use numbering::{ListRelation, NumberingMeta, NumberingType};
 use serde::Serialize;
-use types::{Chunk, ChunkType, Properties};
+use types::{Chunk, ChunkType, Properties, Px, Spacing};
 
 #[derive(Serialize)]
 #[wasm_bindgen]
@@ -27,8 +27,6 @@ pub struct DocxDocument {
 }
 
 use gloo_utils::format::JsValueSerdeExt;
-
-use crate::types::Px;
 
 #[wasm_bindgen]
 impl DocxDocument {
@@ -95,18 +93,23 @@ impl DocxDocument {
         }
 
         // load properties from inline para style
-        let para_props = self.override_para_properties(&style_props, &p.property);
+        let mut para_props = self.override_para_properties(&style_props, &p.property);
         // load properties from inline run style
-        let base_run_props = self.override_run_properties(&style_props, &p.property.run_property);
+        let base_run_props = self.override_run_properties(&para_props, &p.property.run_property);
 
         let mut paragraph = Chunk::new(self.id(), t);
-        paragraph.set_props(para_props);
 
-        let children = self.parse_block_content(&base_run_props, p.children.iter())?;
+        let (paragraph_children, max_sz) =
+            self.parse_block_content(&base_run_props, p.children.iter())?;
+
+        if let Some(s) = &para_props.spacing {
+            para_props.line_height = s.calc_line_spacing(max_sz);
+        }
+        paragraph.set_props(para_props);
 
         let mut chunks: Vec<Chunk> = vec![];
         chunks.push(paragraph);
-        chunks.extend(children);
+        chunks.extend(paragraph_children);
         chunks.push(Chunk::new(self.id(), ChunkType::End));
 
         Ok(chunks)
@@ -188,11 +191,12 @@ impl DocxDocument {
         &mut self,
         base_props: &Properties,
         children_iter: T,
-    ) -> Result<Vec<Chunk>, DocError>
+    ) -> Result<(Vec<Chunk>, usize), DocError>
     where
         T: Iterator<Item = &'a ParagraphChild>,
     {
         let mut chunks: Vec<Chunk> = vec![];
+        let mut max_font_size: usize = 0;
 
         for child in children_iter {
             match child {
@@ -203,16 +207,27 @@ impl DocxDocument {
                         let mut hyperlink = Chunk::new(self.id(), ChunkType::Link);
                         hyperlink.set_url(url.unwrap_or(String::default()));
 
-                        let children = self.parse_block_content(base_props, v.children.iter())?;
+                        let (children, max_sz) =
+                            self.parse_block_content(base_props, v.children.iter())?;
 
                         chunks.push(hyperlink);
                         chunks.extend(children);
                         chunks.push(Chunk::new(self.id(), ChunkType::End));
+
+                        if max_sz > max_font_size {
+                            max_font_size = max_sz;
+                        }
                     }
                     _ => (),
                 },
                 ParagraphChild::Run(run) => {
                     let run_props = self.override_run_properties(base_props, &run.run_property);
+
+                    if let Some(sz) = &run_props.font_size {
+                        if sz.get_val() as usize > max_font_size {
+                            max_font_size = sz.get_val() as usize;
+                        }
+                    }
 
                     for run_child in run.children.iter() {
                         match run_child {
@@ -265,18 +280,8 @@ impl DocxDocument {
             }
         }
 
-        Ok(chunks)
+        Ok((chunks, max_font_size))
     }
-
-    // parse paragraph content
-    // TODO
-    // 1) parse block_content
-    // 2) find max font size
-    // 3) find all spacing and calculate line-height
-    // 4) calculate line-spacing
-    //
-    // * need to change returing value: do not mutate self.chunks directly, better to return an array of children
-    //
 
     fn load_props_from_style(&self, id: &String, dest: &mut Properties) {
         let st = self.docx.styles.find_style_by_id(&id).unwrap();
@@ -312,8 +317,15 @@ impl DocxDocument {
                 new_props.indent = Some(Px::new(px));
             }
         }
-        if let Some(_) = &props.line_spacing {
-            // TODO parse line height
+        if let Some(s) = &props.line_spacing {
+            let mut spacing = Spacing::new(0, 0);
+            if let Some(v) = s.before {
+                spacing.set_before(utils::indent_to_px(v as i32) as usize);
+            }
+            if let Some(v) = s.after {
+                spacing.set_after(utils::indent_to_px(v as i32) as usize);
+            }
+            new_props.spacing = Some(spacing);
         }
 
         new_props
@@ -465,19 +477,19 @@ mod tests {
 
         fn text(&mut self, text: &str, props: Properties) -> Chunk {
             let mut ch = Chunk::new(self.id(), ChunkType::Text);
-            ch.props = props;
+            ch.set_props(props);
             ch.set_text(text.to_owned());
             ch
         }
         fn hyperlink(&mut self, url: &str, props: Properties) -> Chunk {
             let mut ch = Chunk::new(self.id(), ChunkType::Link);
-            ch.props = props;
+            ch.set_props(props);
             ch.set_url(url.to_owned());
             ch
         }
         fn para(&mut self, props: Properties) -> Chunk {
             let mut ch = Chunk::new(self.id(), ChunkType::Paragraph);
-            ch.props = props;
+            ch.set_props(props);
             ch
         }
         fn end(&mut self) -> Chunk {
@@ -485,23 +497,21 @@ mod tests {
         }
         fn ol(&mut self, props: Properties) -> Chunk {
             let mut ch = Chunk::new(self.id(), ChunkType::Ol);
-            ch.props = props;
+            ch.set_props(props);
             ch
         }
         fn ul(&mut self, props: Properties) -> Chunk {
             let mut ch = Chunk::new(self.id(), ChunkType::Ul);
-            ch.props = props;
+            ch.set_props(props);
             ch
         }
         fn li(&mut self, props: Properties) -> Chunk {
             let mut ch = Chunk::new(self.id(), ChunkType::Li);
-            ch.props = props;
+            ch.set_props(props);
             ch
         }
         fn br(&mut self) -> Chunk {
-            let mut ch = Chunk::new(self.id(), ChunkType::Break);
-            ch.props = Properties::default();
-            ch
+            Chunk::new(self.id(), ChunkType::Break)
         }
     }
 
@@ -515,7 +525,7 @@ mod tests {
         pt * 2
     }
     fn px_to_pt(px: i32) -> i32 {
-        (px as f32 * 0.75) as i32
+        (px as f32 * 0.75).round() as i32
     }
     fn px_to_indent(px: i32) -> i32 {
         px * 15
@@ -828,5 +838,42 @@ mod tests {
         let actual_json = to_json_from_docx(docx);
 
         assert_eq!(expected_json, actual_json);
+    }
+
+    #[test]
+    fn test_spacing() {
+        let mut t = T::new();
+        let expected_chunks = vec![
+            t.para(Properties {
+                line_height: Some(3.0),
+                ..Default::default()
+            }),
+            t.text(
+                "Hello Rust!",
+                Properties {
+                    font_size: Some(Px::new(10)),
+                    ..Default::default()
+                },
+            ),
+            t.end(),
+        ];
+        let expexted_json = serde_json::to_string(&expected_chunks).unwrap();
+
+        let docx = Docx::new().add_paragraph(
+            Paragraph::new()
+                .add_run(
+                    Run::new()
+                        .add_text("Hello Rust!")
+                        .size(px_to_docx_points(10) as usize),
+                )
+                .line_spacing(
+                    LineSpacing::new()
+                        .after(px_to_indent(10) as u32)
+                        .before(px_to_indent(10) as u32),
+                ),
+        );
+        let actual_json = to_json_from_docx(docx);
+
+        assert_eq!(expexted_json, actual_json);
     }
 }

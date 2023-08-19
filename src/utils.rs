@@ -1,3 +1,5 @@
+pub static DEFAULT_SZ_PX: usize = 16;
+
 pub fn emu_to_px(emu: i32) -> i32 {
     let dpi = 96.0;
     (emu as f32 * (dpi / 914400.0)) as i32

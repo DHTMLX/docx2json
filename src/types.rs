@@ -1,5 +1,7 @@
 use serde::{Serialize, Serializer};
 
+use crate::utils;
+
 #[derive(PartialEq, Clone, Copy)]
 pub enum ChunkType {
     Paragraph = 2 | 0x4000 | 0x2000,
@@ -20,12 +22,18 @@ pub struct Chunk {
     #[serde(skip_serializing_if = "Option::is_none")]
     text: Option<String>,
     #[serde(skip_serializing_if = "Properties::is_empty")]
-    pub props: Properties,
+    props: Properties,
 }
 
 #[derive(Debug, Clone)]
 pub struct Px {
-    pub val: i32,
+    val: i32,
+}
+
+#[derive(Debug, Clone)]
+pub struct Spacing {
+    after: usize,
+    before: usize,
 }
 
 #[derive(Serialize, Debug, Clone, Default)]
@@ -56,6 +64,9 @@ pub struct Properties {
     pub width: Option<Px>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub height: Option<Px>,
+
+    #[serde(skip_serializing)]
+    pub spacing: Option<Spacing>,
 }
 
 impl Chunk {
@@ -164,6 +175,9 @@ impl Px {
     pub fn get_str(&self) -> String {
         format!("{}px", self.val)
     }
+    pub fn get_val(&self) -> i32 {
+        self.val
+    }
 }
 
 impl Serialize for Px {
@@ -172,5 +186,35 @@ impl Serialize for Px {
         S: Serializer,
     {
         serializer.serialize_str(&self.get_str())
+    }
+}
+
+impl Spacing {
+    pub fn new(after_px: usize, before_px: usize) -> Spacing {
+        Spacing {
+            after: after_px,
+            before: before_px,
+        }
+    }
+    pub fn set_after(&mut self, px: usize) {
+        self.after = px;
+    }
+    pub fn set_before(&mut self, px: usize) {
+        self.before = px;
+    }
+    pub fn calc_line_spacing(&self, sz_px: usize) -> Option<f32> {
+        if self.after == 0 && self.before == 0 {
+            return None;
+        }
+
+        let sz = if sz_px == 0 {
+            utils::DEFAULT_SZ_PX
+        } else {
+            sz_px
+        };
+
+        let line_height = self.after + self.before + sz;
+
+        Some(line_height as f32 / sz as f32)
     }
 }
