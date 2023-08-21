@@ -295,9 +295,9 @@ impl DocxDocument {
     }
 
     fn load_props_from_style(&self, id: &String, dest: &mut Properties) {
+        // TODO use cache for computed styles
         let st = self.docx.styles.find_style_by_id(&id).unwrap();
         if let Some(based_on) = &st.based_on {
-            // FIXME check InternetLink style
             self.load_props_from_style(&based_on.val, dest);
         }
 
@@ -331,7 +331,6 @@ impl DocxDocument {
             }
         }
         if let Some(s) = &props.line_spacing {
-            // FIXME adjust spacing or line-height formula
             let mut spacing = Spacing::new(0, 0);
             if let Some(v) = s.before {
                 spacing.set_before(utils::indent_to_px(v as i32) as usize);
@@ -390,7 +389,7 @@ impl DocxDocument {
     fn find_image_source(&self, rid: &String) -> Option<String> {
         for h in self.docx.images.iter() {
             if &h.0 == rid {
-                let data = &h.3 .0;
+                let data = &h.2;
                 if !data.is_empty() {
                     let s = general_purpose::STANDARD.encode(&data);
                     return Some(s);
