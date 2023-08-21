@@ -222,7 +222,12 @@ impl DocxDocument {
                     _ => (),
                 },
                 ParagraphChild::Run(run) => {
-                    let run_props = self.override_run_properties(base_props, &run.run_property);
+                    let mut run_style_props = base_props.to_owned();
+                    if let Some(st) = &run.run_property.style {
+                        self.load_props_from_style(&st.val, &mut run_style_props);
+                    }
+                    let run_props =
+                        self.override_run_properties(&run_style_props, &run.run_property);
 
                     if let Some(sz) = &run_props.font_size {
                         if sz.get_val() as usize > max_font_size {
@@ -292,6 +297,7 @@ impl DocxDocument {
     fn load_props_from_style(&self, id: &String, dest: &mut Properties) {
         let st = self.docx.styles.find_style_by_id(&id).unwrap();
         if let Some(based_on) = &st.based_on {
+            // FIXME check InternetLink style
             self.load_props_from_style(&based_on.val, dest);
         }
 
@@ -348,8 +354,7 @@ impl DocxDocument {
             new_props.italic = Some(italic.val);
         }
         if let Some(underline) = &props.underline {
-            // FIXME check underline kind
-            new_props.underline = Some(!underline.val.is_empty());
+            new_props.underline = Some(underline.val == "single");
         }
         if let Some(strike) = &props.strike {
             new_props.strike = Some(strike.val);
