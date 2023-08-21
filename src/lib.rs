@@ -361,9 +361,9 @@ impl DocxDocument {
         if let Some(color) = &props.color {
             new_props.color = Some(color.val.to_owned());
         }
-        // if let Some(background) = &props.shading {
-        //     // FIXME Not supported by the docx-rs library. Need to add this ability manually
-        // }
+        if let Some(shd) = &props.shading {
+            new_props.background = Some(shd.fill.to_owned());
+        }
         if let Some(fonts) = &props.fonts {
             if let Some(v) = &fonts.ascii {
                 new_props.font_family = Some(v.to_owned());
@@ -465,7 +465,7 @@ mod tests {
     use docx_rs::{
         AbstractNumbering, AlignmentType, BreakType, Docx, Hyperlink, HyperlinkType, IndentLevel,
         Level, LevelJc, LevelText, LineSpacing, NumberFormat, Numbering, NumberingId, Paragraph,
-        Run, RunFonts, Start, Style, StyleType,
+        Run, RunFonts, Shading, ShdType, Start, Style, StyleType,
     };
 
     use crate::{
@@ -790,6 +790,7 @@ mod tests {
                     font_family: Some("Times".to_owned()),
                     color: Some("#888".to_owned()),
                     bold: Some(true),
+                    background: Some("#ABCDE".to_owned()),
                     ..Default::default()
                 },
             ),
@@ -815,7 +816,8 @@ mod tests {
                         Run::new()
                             .add_text("Hello Rust!")
                             .bold()
-                            .size(px_to_docx_points(8) as usize),
+                            .size(px_to_docx_points(8) as usize)
+                            .shading(Shading::new().shd_type(ShdType::Clear).fill("#ABCDE")),
                     )
                     .style("Test"),
             )
