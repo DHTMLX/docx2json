@@ -265,8 +265,13 @@ impl DocxDocument {
 
                                 chunks.push(text);
                             }
-                            RunChild::Tab(_t) => {
-                                // TODO parse tab
+                            RunChild::Tab(_) => {
+                                // parse tab
+                                let mut tab = Chunk::new(self.id(), ChunkType::Text);
+                                tab.set_props(run_props.to_owned());
+                                tab.set_text("\t".to_owned());
+
+                                chunks.push(tab);
                             }
                             RunChild::Break(b) => {
                                 if b.break_type == BreakType::TextWrapping {
