@@ -309,6 +309,7 @@ impl DocxDocument {
         dest.bold = run_props.bold;
         dest.italic = run_props.italic;
         dest.underline = run_props.underline;
+        dest.strike = run_props.strike;
     }
 
     fn override_para_properties(&self, base: &Properties, props: &ParagraphProperty) -> Properties {
@@ -349,6 +350,9 @@ impl DocxDocument {
         if let Some(underline) = &props.underline {
             // FIXME check underline kind
             new_props.underline = Some(!underline.val.is_empty());
+        }
+        if let Some(strike) = &props.strike {
+            new_props.strike = Some(strike.val);
         }
         if let Some(sz) = &props.sz {
             let sz_px = utils::docx_pt_to_px(sz.val as i32);
@@ -775,6 +779,7 @@ mod tests {
                     font_size: Some(Px::new(32)),
                     font_family: Some("Times".to_owned()),
                     color: Some("#888".to_owned()),
+                    strike: Some(true),
                     ..Default::default()
                 },
             ),
@@ -805,7 +810,7 @@ mod tests {
         let docx = Docx::new()
             .add_paragraph(
                 Paragraph::new()
-                    .add_run(Run::new().add_text("Hello Word!"))
+                    .add_run(Run::new().add_text("Hello Word!").strike())
                     .add_run(
                         Run::new()
                             .add_text("Hello Rust!")

@@ -55,6 +55,8 @@ pub struct Properties {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub underline: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub strike: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub align: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub indent: Option<Px>,
@@ -117,6 +119,7 @@ impl Chunk {
                 self.props.bold = props.bold;
                 self.props.italic = props.italic;
                 self.props.underline = props.underline;
+                self.props.strike = props.strike;
             }
             ChunkType::Image => {
                 self.props.width = props.width;
@@ -146,6 +149,7 @@ impl Properties {
             && self.line_height == None
             && self.width.is_none()
             && self.height.is_none()
+            && self.strike == None
     }
 }
 
