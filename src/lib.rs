@@ -300,7 +300,7 @@ impl DocxDocument {
 
         dest.align = para_props.align;
         dest.indent = para_props.indent;
-        dest.line_height = para_props.line_height;
+        dest.spacing = para_props.spacing;
 
         dest.color = run_props.color;
         dest.background = run_props.background;
@@ -324,6 +324,7 @@ impl DocxDocument {
             }
         }
         if let Some(s) = &props.line_spacing {
+            // FIXME adjust spacing or line-height formula
             let mut spacing = Spacing::new(0, 0);
             if let Some(v) = s.before {
                 spacing.set_before(utils::indent_to_px(v as i32) as usize);
@@ -541,7 +542,7 @@ mod tests {
 
     #[test]
     fn test_read() {
-        let path = "./temp/test_indent.docx".to_owned();
+        let path = "./example/all.docx".to_owned();
         let mut f = File::open(path).unwrap();
         let mut buf = Vec::<u8>::new();
         f.read_to_end(&mut buf).unwrap();
