@@ -3,6 +3,8 @@ mod numbering;
 mod types;
 mod utils;
 
+use std::collections::HashMap;
+
 use wasm_bindgen;
 use wasm_bindgen::prelude::*;
 
@@ -24,6 +26,7 @@ pub struct DocxDocument {
     #[serde(skip_serializing)]
     docx: docx_rs::Docx,
     id_counter: usize,
+    computed_styles: HashMap<String, Properties>,
 }
 
 use gloo_utils::format::JsValueSerdeExt;
@@ -50,6 +53,7 @@ impl DocxDocument {
             chunks: vec![],
             docx: docx,
             id_counter: 0,
+            computed_styles: HashMap::new(),
         }
     }
 
@@ -86,11 +90,11 @@ impl DocxDocument {
     }
 
     fn parse_paragraph(&mut self, p: &Paragraph, t: ChunkType) -> Result<Vec<Chunk>, DocError> {
-        let mut style_props = Properties::new();
-        if let Some(v) = &p.property.style {
-            // load properties from the style
-            self.load_props_from_style(&v.val, &mut style_props);
-        }
+        let style_props = if let Some(v) = &p.property.style {
+            self.load_props_from_style(&v.val, &Properties::new())
+        } else {
+            Properties::new()
+        };
 
         // load properties from inline para style
         let mut para_props = self.override_para_properties(&style_props, &p.property);
@@ -222,10 +226,12 @@ impl DocxDocument {
                     _ => (),
                 },
                 ParagraphChild::Run(run) => {
-                    let mut run_style_props = base_props.to_owned();
-                    if let Some(st) = &run.run_property.style {
-                        self.load_props_from_style(&st.val, &mut run_style_props);
-                    }
+                    let run_style_props = if let Some(st) = &run.run_property.style {
+                        self.load_props_from_style(&st.val, base_props)
+                    } else {
+                        base_props.to_owned()
+                    };
+
                     let run_props =
                         self.override_run_properties(&run_style_props, &run.run_property);
 
@@ -294,28 +300,39 @@ impl DocxDocument {
         Ok((chunks, max_font_size))
     }
 
-    fn load_props_from_style(&self, id: &String, dest: &mut Properties) {
-        // TODO use cache for computed styles
-        let st = self.docx.styles.find_style_by_id(&id).unwrap();
-        if let Some(based_on) = &st.based_on {
-            self.load_props_from_style(&based_on.val, dest);
+    fn load_props_from_style(&mut self, id: &String, base: &Properties) -> Properties {
+        if let Some(st) = self.computed_styles.get(id) {
+            return st.to_owned();
         }
 
-        let para_props = self.override_para_properties(dest, &st.paragraph_property);
-        let run_props = self.override_run_properties(dest, &st.run_property);
+        let mut st_props = base.clone();
 
-        dest.align = para_props.align;
-        dest.indent = para_props.indent;
-        dest.spacing = para_props.spacing;
+        let st = self.docx.styles.find_style_by_id(&id).unwrap().to_owned();
 
-        dest.color = run_props.color;
-        dest.background = run_props.background;
-        dest.font_size = run_props.font_size;
-        dest.font_family = run_props.font_family;
-        dest.bold = run_props.bold;
-        dest.italic = run_props.italic;
-        dest.underline = run_props.underline;
-        dest.strike = run_props.strike;
+        if let Some(based_on) = &st.based_on {
+            st_props = self.load_props_from_style(&based_on.val, base);
+        }
+
+        let para_props = self.override_para_properties(&st_props, &st.paragraph_property);
+        let run_props = self.override_run_properties(&st_props, &st.run_property);
+
+        st_props.align = para_props.align;
+        st_props.indent = para_props.indent;
+        st_props.spacing = para_props.spacing;
+
+        st_props.color = run_props.color;
+        st_props.background = run_props.background;
+        st_props.font_size = run_props.font_size;
+        st_props.font_family = run_props.font_family;
+        st_props.bold = run_props.bold;
+        st_props.italic = run_props.italic;
+        st_props.underline = run_props.underline;
+        st_props.strike = run_props.strike;
+
+        self.computed_styles
+            .insert(id.to_owned(), st_props.to_owned());
+
+        st_props
     }
 
     fn override_para_properties(&self, base: &Properties, props: &ParagraphProperty) -> Properties {
@@ -340,6 +357,8 @@ impl DocxDocument {
             }
             new_props.spacing = Some(spacing);
         }
+
+        // TODO parse run properties
 
         new_props
     }
@@ -476,6 +495,8 @@ mod tests {
         types::{Chunk, ChunkType, Properties, Px},
         DocxDocument,
     };
+
+    use pretty_assertions::assert_eq;
 
     struct T {
         id_counter: usize,
