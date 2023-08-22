@@ -75,7 +75,7 @@ checksum = "56254986775e3233ffa9c4d7d3faaf6d36a2c09d30b20687e9f88bc8bafc16c8"
 [[package]]
 name = "docx-rs"
 version = "0.4.7"
-source = "git+https://github.com/a-shpak/docx-rs.git?branch=docx2json#99263989c7c2d730dc38791b2b243333b4a1bd09"
+source = "git+https://github.com/a-shpak/docx-rs.git?branch=docx2json#f907f58e450c9323d3fa388405ac86f4b99d3c46"
 dependencies = [
  "base64 0.13.1",
  "serde",

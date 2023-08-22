@@ -13,6 +13,8 @@ pub enum ChunkType {
     Li = 10 | 0x2000 | 0x4000,
     End = 0x1fff,
     Break = 11 | 0x4000,
+    SubScript = 13 | 0x2000 | 0x8000,
+    SuperScript = 14 | 0x2000 | 0x8000,
 }
 
 #[derive(Serialize, Clone)]
@@ -69,6 +71,10 @@ pub struct Properties {
 
     #[serde(skip_serializing)]
     pub spacing: Option<Spacing>,
+    #[serde(skip_serializing)]
+    pub superscript: bool,
+    #[serde(skip_serializing)]
+    pub subscript: bool,
 }
 
 impl Chunk {
@@ -168,6 +174,8 @@ impl Serialize for ChunkType {
             ChunkType::Li => serializer.serialize_i32(10 | 0x2000 | 0x4000),
             ChunkType::End => serializer.serialize_i32(0x1fff),
             ChunkType::Break => serializer.serialize_i32(11 | 0x4000),
+            ChunkType::SubScript => serializer.serialize_i32(13 | 0x2000 | 0x8000),
+            ChunkType::SuperScript => serializer.serialize_i32(14 | 0x2000 | 0x8000),
         }
     }
 }

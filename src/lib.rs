@@ -11,7 +11,7 @@ use wasm_bindgen::prelude::*;
 use base64::{engine::general_purpose, Engine};
 use docx_rs::{
     BreakType, DocumentChild, DrawingData, HyperlinkData, Paragraph, ParagraphChild,
-    ParagraphProperty, RunChild, RunProperty,
+    ParagraphProperty, RunChild, RunProperty, VertAlignType,
 };
 
 use error::DocError;
@@ -241,6 +241,15 @@ impl DocxDocument {
                         }
                     }
 
+                    let mut need_end = false;
+                    if run_props.subscript {
+                        chunks.push(Chunk::new(self.id(), ChunkType::SubScript));
+                        need_end = true;
+                    } else if run_props.superscript {
+                        chunks.push(Chunk::new(self.id(), ChunkType::SuperScript));
+                        need_end = true;
+                    }
+
                     for run_child in run.children.iter() {
                         match run_child {
                             RunChild::Drawing(d) => {
@@ -291,6 +300,10 @@ impl DocxDocument {
                             }
                             _ => (),
                         }
+                    }
+
+                    if need_end {
+                        chunks.push(Chunk::new(self.id(), ChunkType::End));
                     }
                 }
                 _ => (),
@@ -392,6 +405,17 @@ impl DocxDocument {
                 new_props.font_family = Some(v.to_owned());
             }
         }
+        if let Some(valign) = &props.vert_align {
+            match valign.val {
+                VertAlignType::SuperScript => {
+                    new_props.superscript = true;
+                }
+                VertAlignType::SubScript => {
+                    new_props.subscript = true;
+                }
+                _ => (),
+            }
+        }
 
         new_props
     }
@@ -488,7 +512,8 @@ mod tests {
     use docx_rs::{
         AbstractNumbering, AlignmentType, BreakType, Docx, Hyperlink, HyperlinkType, IndentLevel,
         Level, LevelJc, LevelText, LineSpacing, NumberFormat, Numbering, NumberingId, Paragraph,
-        Run, RunFonts, Shading, ShdType, Start, Style, StyleType,
+        Run, RunFonts, RunProperty, Shading, ShdType, Start, Style, StyleType, VertAlign,
+        VertAlignType,
     };
 
     use crate::{
@@ -549,6 +574,12 @@ mod tests {
         }
         fn br(&mut self) -> Chunk {
             Chunk::new(self.id(), ChunkType::Break)
+        }
+        fn sub(&mut self) -> Chunk {
+            Chunk::new(self.id(), ChunkType::SubScript)
+        }
+        fn spr(&mut self) -> Chunk {
+            Chunk::new(self.id(), ChunkType::SuperScript)
         }
     }
 
@@ -912,6 +943,49 @@ mod tests {
                         .before(px_to_indent(10) as u32),
                 ),
         );
+        let actual_json = to_json_from_docx(docx);
+
+        assert_eq!(expexted_json, actual_json);
+    }
+
+    #[test]
+    fn test_sub_super_script() {
+        let mut t = T::new();
+        let expected_chunks = vec![
+            t.para(Properties::default()),
+            /**/ t.text("text", Properties::default()),
+            /**/ t.spr(),
+            /**//**/ t.text("superscripted", Properties::default()),
+            /**/ t.end(),
+            t.end(),
+            t.para(Properties::default()),
+            /**/ t.text("text", Properties::default()),
+            /**/ t.sub(),
+            /**//**/ t.text("subscripted", Properties::default()),
+            /**/ t.end(),
+            t.end(),
+        ];
+        let expexted_json = serde_json::to_string(&expected_chunks).unwrap();
+
+        let docx = Docx::new()
+            .add_paragraph(
+                Paragraph::new()
+                    .add_run(Run::new().add_text("text"))
+                    .add_run(
+                        Run::new()
+                            .add_text("superscripted")
+                            .vert_align(VertAlignType::SuperScript),
+                    ),
+            )
+            .add_paragraph(
+                Paragraph::new()
+                    .add_run(Run::new().add_text("text"))
+                    .add_run(
+                        Run::new()
+                            .add_text("subscripted")
+                            .vert_align(VertAlignType::SubScript),
+                    ),
+            );
         let actual_json = to_json_from_docx(docx);
 
         assert_eq!(expexted_json, actual_json);
