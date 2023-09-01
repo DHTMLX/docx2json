@@ -295,7 +295,7 @@ impl DocxDocument {
                             }
                             RunChild::Break(b) => {
                                 if b.break_type == BreakType::TextWrapping {
-                                    chunks.push(Chunk::new(self.id(), ChunkType::Break));
+                                    chunks.push(Chunk::new(self.id(), ChunkType::Newline));
                                 }
                             }
                             _ => (),
@@ -512,8 +512,7 @@ mod tests {
     use docx_rs::{
         AbstractNumbering, AlignmentType, BreakType, Docx, Hyperlink, HyperlinkType, IndentLevel,
         Level, LevelJc, LevelText, LineSpacing, NumberFormat, Numbering, NumberingId, Paragraph,
-        Run, RunFonts, RunProperty, Shading, ShdType, Start, Style, StyleType, VertAlign,
-        VertAlignType,
+        Run, RunFonts, Shading, ShdType, Start, Style, StyleType, VertAlignType,
     };
 
     use crate::{
@@ -573,7 +572,7 @@ mod tests {
             ch
         }
         fn br(&mut self) -> Chunk {
-            Chunk::new(self.id(), ChunkType::Break)
+            Chunk::new(self.id(), ChunkType::Newline)
         }
         fn sub(&mut self) -> Chunk {
             Chunk::new(self.id(), ChunkType::SubScript)

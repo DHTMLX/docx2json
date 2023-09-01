@@ -8,13 +8,13 @@ pub enum ChunkType {
     Text = 3 | 0x8000,
     Image = 5 | 0x8000,
     Link = 6 | 0x2000 | 0x8000,
+    Newline = 7 | 0x8000,
     Ul = 8 | 0x2000 | 0x4000,
     Ol = 9 | 0x2000 | 0x4000,
     Li = 10 | 0x2000 | 0x4000,
-    End = 0x1fff,
-    Break = 11 | 0x4000,
     SubScript = 13 | 0x2000 | 0x8000,
     SuperScript = 14 | 0x2000 | 0x8000,
+    End = 0x1fff,
 }
 
 #[derive(Serialize, Clone)]
@@ -169,13 +169,13 @@ impl Serialize for ChunkType {
             ChunkType::Text => serializer.serialize_u32(3 | 0x8000),
             ChunkType::Image => serializer.serialize_i32(5 | 0x8000),
             ChunkType::Link => serializer.serialize_i32(6 | 0x2000 | 0x8000),
+            ChunkType::Newline => serializer.serialize_i32(7 | 0x8000),
             ChunkType::Ul => serializer.serialize_i32(8 | 0x2000 | 0x4000),
             ChunkType::Ol => serializer.serialize_i32(9 | 0x2000 | 0x4000),
             ChunkType::Li => serializer.serialize_i32(10 | 0x2000 | 0x4000),
-            ChunkType::End => serializer.serialize_i32(0x1fff),
-            ChunkType::Break => serializer.serialize_i32(11 | 0x4000),
             ChunkType::SubScript => serializer.serialize_i32(13 | 0x2000 | 0x8000),
             ChunkType::SuperScript => serializer.serialize_i32(14 | 0x2000 | 0x8000),
+            ChunkType::End => serializer.serialize_i32(0x1fff),
         }
     }
 }
